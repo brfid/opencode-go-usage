@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+auth.txt
+usage.json
+watchdog-state.json
+
+dist/
+build/
+*.egg-info/
