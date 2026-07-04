@@ -28,6 +28,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from typing import NoReturn
 
 BASE = "https://opencode.ai"
 TIMEOUT = 30
@@ -68,7 +69,7 @@ def _window_re(key: str) -> re.Pattern:
     )
 
 
-def _fail(code: int, tag: str, msg: str) -> "typing.NoReturn":  # noqa: F821
+def _fail(code: int, tag: str, msg: str) -> NoReturn:
     """Print a FATAL: message to stderr and exit with `code`."""
     print("FATAL: " + tag, file=sys.stderr)
     print(msg, file=sys.stderr)
@@ -79,7 +80,6 @@ def _http_get(url: str, cookie: str) -> tuple[str, str]:
     """Fetch a URL as the logged-in user.
 
     Args:
-        url: The page to fetch.
         cookie: A ``Cookie:`` header value, e.g. ``"auth=Fe26.2**..."``.
 
     Returns:
@@ -236,7 +236,10 @@ def load_cookie(cookie_file: str | None) -> str:
     """
     val = os.getenv("OPENCODE_AUTH_COOKIE")
     if not val and cookie_file:
-        val = Path(cookie_file).read_text()
+        try:
+            val = Path(cookie_file).read_text()
+        except OSError as e:
+            _fail(1, "NO_COOKIE", "Can't read --cookie-file %s: %s" % (cookie_file, e))
     if not val and DEFAULT_COOKIE_FILE.exists():
         val = DEFAULT_COOKIE_FILE.read_text()
     if not val or not val.strip():
@@ -274,6 +277,11 @@ def check_thresholds(windows: dict) -> list[str]:
 
 
 def main() -> int:
+    """CLI entry point: parse args, fetch usage, emit JSON, warn on threshold breaches.
+
+    Returns:
+        Process exit code. Always 0 here — failures exit early via :func:`_fail`.
+    """
     parser = argparse.ArgumentParser(description="Fetch OpenCode Go usage limits as JSON.")
     parser.add_argument("--workspace", help="Workspace id (default: OPENCODE_WORKSPACE_ID env var)")
     parser.add_argument("--cookie-file", help="File containing the session cookie")

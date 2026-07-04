@@ -130,6 +130,16 @@ def test_load_cookie_reads_cookie_file(tmp_path=None):
             assert m.load_cookie(str(cookie_path)) == "auth=Fe26.2**fromfile"
 
 
+def test_load_cookie_bad_file_exits_1_cleanly():
+    with patch.dict(os.environ, {}, clear=False):
+        os.environ.pop("OPENCODE_AUTH_COOKIE", None)
+        try:
+            m.load_cookie("/nonexistent/opencode-go-usage-test/no-cookie")
+            raise AssertionError("expected SystemExit")
+        except SystemExit as e:
+            assert e.code == 1
+
+
 def test_load_cookie_missing_everywhere_exits_1():
     with patch.dict(os.environ, {}, clear=False):
         os.environ.pop("OPENCODE_AUTH_COOKIE", None)

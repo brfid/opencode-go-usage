@@ -7,7 +7,6 @@
   no dependencies.
 - Output reports the three usage windows (rolling / weekly / monthly) as
   `pct` + `reset_in_sec` + `status`, plus `use_balance`.
-- Auto-detects the workspace id.
 - Added tests and an MIT license; packaged for `pipx install`.
 - Moved the provider-switch watchdog to `examples/` as an adaptable template.
 

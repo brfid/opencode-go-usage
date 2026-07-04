@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.9"
 license = "MIT"
 authors = [{ name = "brfid" }]
-keywords = ["opencode", "usage", "cli"]
+keywords = ["opencode", "opencode-go", "usage", "cli", "rate-limit", "session-cookie", "coding-agent"]
 dependencies = []
 
 [project.scripts]

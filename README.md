@@ -41,6 +41,10 @@ echo 'Fe26.2**...' > ~/.config/opencode-go-usage/auth   # the default file, or
 ./opencode_go_usage.py --cookie-file /path/to/cookie    # any file you choose
 ```
 
+A `.env.example` is included as a template — copy it to `.env`, fill it in, then
+load it into your shell before running the tool (there's no dependency to parse
+it automatically): `set -a; source .env; set +a`.
+
 **This cookie is a full login credential.** It's checked in that order —
 env var, then `--cookie-file`, then `~/.config/opencode-go-usage/auth` — and
 none of those locations are inside this repo, so cloning or sharing the repo
