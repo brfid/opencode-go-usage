@@ -39,11 +39,29 @@ WINDOWS = {"rolling": "rollingUsage", "weekly": "weeklyUsage", "monthly": "month
 # Default alert thresholds (percent). Override with ALERT_<WINDOW>_PCT env vars.
 DEFAULT_THRESHOLDS = {"rolling": 90.0, "weekly": 85.0, "monthly": 95.0}
 
+# Default file-based cookie location. Deliberately outside any git working
+# directory so cloning or sharing this repo can never expose a real cookie.
+DEFAULT_COOKIE_FILE = Path.home() / ".config/opencode-go-usage/auth"
+
 _USE_BALANCE_RE = re.compile(r"useBalance:(!0|!1),region:")
 
 
 def _window_re(key: str) -> re.Pattern:
-    # Matches e.g.  monthlyUsage:$R[38]={status:"ok",resetInSec:504671,usagePercent:43}
+    """Build the regex that finds one usage window's inlined data.
+
+    The Go page is a SolidJS app; each window's data is inlined in a
+    minified ``<script>`` blob in a form like::
+
+        monthlyUsage:$R[38]={status:"ok",resetInSec:504671,usagePercent:43}
+
+    Args:
+        key: The window's JS property name, e.g. ``"monthlyUsage"``
+            (see :data:`WINDOWS`).
+
+    Returns:
+        A compiled pattern with three capture groups: status, reset_in_sec,
+        usagePercent, in that order.
+    """
     return re.compile(
         re.escape(key)
         + r':\$R\[\d+\]=\{status:"([^"]*)",resetInSec:(\d+),usagePercent:(\d+)\}'
@@ -51,13 +69,28 @@ def _window_re(key: str) -> re.Pattern:
 
 
 def _fail(code: int, tag: str, msg: str) -> "typing.NoReturn":  # noqa: F821
+    """Print a FATAL: message to stderr and exit with `code`."""
     print("FATAL: " + tag, file=sys.stderr)
     print(msg, file=sys.stderr)
     sys.exit(code)
 
 
 def _http_get(url: str, cookie: str) -> tuple[str, str]:
-    """GET a URL with the session cookie. Returns (final_url, body). Exits on error."""
+    """Fetch a URL as the logged-in user.
+
+    Args:
+        url: The page to fetch.
+        cookie: A ``Cookie:`` header value, e.g. ``"auth=Fe26.2**..."``.
+
+    Returns:
+        A ``(final_url, body)`` tuple. ``final_url`` differs from `url` if
+        the server redirected (e.g. to the login page).
+
+    Raises:
+        SystemExit: via :func:`_fail` — code 1 on an HTTP 401/403 (the
+            cookie was outright rejected), code 3 on any other HTTP error,
+            timeout, or connection failure.
+    """
     req = urllib.request.Request(
         url,
         headers={
@@ -79,17 +112,36 @@ def _http_get(url: str, cookie: str) -> tuple[str, str]:
 
 
 def _looks_logged_out(final_url: str, html: str) -> bool:
+    """Detect a still-200 "you're not logged in" response.
+
+    Some auth failures redirect to ``auth.opencode.ai`` (HTTP-level); others
+    render an HTTP 200 page with no workspace content (e.g. a generic app
+    shell or login prompt). This catches the second case: every authenticated
+    page embeds at least one ``wrk_...`` workspace id.
+
+    Args:
+        final_url: The URL after following any redirects.
+        html: The response body.
+
+    Returns:
+        True if the response looks like a logged-out state.
+    """
     if "auth.opencode.ai" in final_url:
         return True
-    # Every authenticated page carries the app shell and at least one workspace id.
     return "wrk_" not in html
 
 
 def parse_usage(html: str) -> dict | None:
-    """Extract the three usage windows from the page HTML.
+    """Extract the three usage windows from the Go page HTML.
 
-    Returns {window: {"status", "reset_in_sec", "pct"}} or None if the page
-    format changed (the values are no longer where we expect them).
+    Args:
+        html: The page body from :func:`_http_get`.
+
+    Returns:
+        A dict keyed by window name (``"rolling"``, ``"weekly"``,
+        ``"monthly"``), each mapping to ``{"status", "reset_in_sec", "pct"}``.
+        Returns None if any window's data isn't found — i.e. OpenCode
+        changed the page format and :func:`_window_re` no longer matches.
     """
     out = {}
     for name, key in WINDOWS.items():
@@ -105,7 +157,12 @@ def parse_usage(html: str) -> dict | None:
 
 
 def parse_use_balance(html: str) -> bool | None:
-    """Whether the account falls back to paid balance after limits. None if absent."""
+    """Whether the account falls back to paid balance after limits.
+
+    Returns:
+        True/False if the ``useBalance`` flag is found in the page's inlined
+        data, otherwise None (e.g. the page format changed).
+    """
     m = _USE_BALANCE_RE.search(html)
     if not m:
         return None
@@ -113,6 +170,20 @@ def parse_use_balance(html: str) -> bool | None:
 
 
 def fetch(cookie: str, workspace_id: str | None) -> dict:
+    """Fetch and parse OpenCode Go usage for one workspace.
+
+    Args:
+        cookie: A ``Cookie:`` header value from :func:`load_cookie`.
+        workspace_id: The ``wrk_...`` workspace id, or None/empty.
+
+    Returns:
+        The full result dict — see the module docstring for its shape.
+
+    Raises:
+        SystemExit: via :func:`_fail` — code 1 if `workspace_id` is missing
+            or the cookie is expired, code 2 if the page format changed,
+            code 3 on a network error (raised by :func:`_http_get`).
+    """
     if not workspace_id:
         _fail(
             1,
@@ -144,21 +215,36 @@ def fetch(cookie: str, workspace_id: str | None) -> dict:
 
 
 def load_cookie(cookie_file: str | None) -> str:
-    """Resolve the session cookie from env, --cookie-file, or default files."""
+    """Resolve the session cookie value, normalized to a `Cookie:` header.
+
+    Checked in order, so credentials never have to live inside this repo's
+    working directory (useful when the repo itself is shared/public):
+
+    1. ``OPENCODE_AUTH_COOKIE`` env var — set this from your secret manager
+       or from Hermes at invocation time.
+    2. ``cookie_file`` (the ``--cookie-file`` flag), if given.
+    3. ``DEFAULT_COOKIE_FILE`` (``~/.config/opencode-go-usage/auth``).
+
+    Args:
+        cookie_file: Path from ``--cookie-file``, or None to skip that source.
+
+    Returns:
+        A value usable as an HTTP ``Cookie`` header, e.g. ``"auth=Fe26.2**..."``.
+
+    Raises:
+        SystemExit: via :func:`_fail` with code 1 if no cookie is found.
+    """
     val = os.getenv("OPENCODE_AUTH_COOKIE")
     if not val and cookie_file:
         val = Path(cookie_file).read_text()
-    if not val:
-        for p in (Path("auth.txt"), Path.home() / ".config/opencode-go-usage/auth"):
-            if p.exists():
-                val = p.read_text()
-                break
+    if not val and DEFAULT_COOKIE_FILE.exists():
+        val = DEFAULT_COOKIE_FILE.read_text()
     if not val or not val.strip():
         _fail(
             1,
             "NO_COOKIE",
             "No session cookie. Set OPENCODE_AUTH_COOKIE, pass --cookie-file, "
-            "or create auth.txt. See README § Get your session cookie.",
+            "or write it to %s. See README § Get your session cookie." % DEFAULT_COOKIE_FILE,
         )
     val = val.strip()
     # Accept a bare sealed value, `auth=...`, or a full `k=v; k=v` cookie header.
@@ -168,6 +254,16 @@ def load_cookie(cookie_file: str | None) -> str:
 
 
 def check_thresholds(windows: dict) -> list[str]:
+    """Compare each window's usage against its alert threshold.
+
+    Args:
+        windows: The ``result["windows"]`` dict from :func:`fetch`.
+
+    Returns:
+        One human-readable string per window that's at or above its
+        threshold (env var ``ALERT_<WINDOW>_PCT``, falling back to
+        :data:`DEFAULT_THRESHOLDS`). Empty if nothing crossed.
+    """
     alerts = []
     for name in WINDOWS:
         threshold = float(os.getenv("ALERT_%s_PCT" % name.upper(), DEFAULT_THRESHOLDS[name]))

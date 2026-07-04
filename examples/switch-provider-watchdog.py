@@ -55,6 +55,11 @@ def load_json(path: Path):
 
 
 def is_fresh(usage: dict) -> bool:
+    """Whether `usage["scraped_at"]` (a UTC timestamp) is within MAX_AGE_SEC.
+
+    `time.mktime` assumes local time, so `- time.timezone` corrects the
+    parsed UTC struct_time back to a true Unix epoch offset.
+    """
     stamped = usage.get("scraped_at", "")
     try:
         t = time.strptime(stamped, "%Y-%m-%dT%H:%M:%SZ")

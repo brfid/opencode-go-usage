@@ -35,15 +35,17 @@ The tool authenticates as you, using the `auth` cookie your browser already has.
 4. Give it to the tool one of these ways:
 
 ```bash
-export OPENCODE_AUTH_COOKIE='Fe26.2**...'      # env var, or
-echo 'Fe26.2**...' > auth.txt                  # a file (git-ignored), or
-./opencode_go_usage.py --cookie-file /path/to/cookie
+export OPENCODE_AUTH_COOKIE='Fe26.2**...'          # env var, or
+mkdir -p ~/.config/opencode-go-usage
+echo 'Fe26.2**...' > ~/.config/opencode-go-usage/auth   # the default file, or
+./opencode_go_usage.py --cookie-file /path/to/cookie    # any file you choose
 ```
 
-**This cookie is a full login credential.** Keep it out of version control
-(`auth.txt` and `.env` are git-ignored) and treat it like a password. It is
-long-lived but does eventually expire — when it does, the tool exits `1` and you
-re-grab it.
+**This cookie is a full login credential.** It's checked in that order —
+env var, then `--cookie-file`, then `~/.config/opencode-go-usage/auth` — and
+none of those locations are inside this repo, so cloning or sharing the repo
+never risks the secret. Treat it like a password. It's long-lived but does
+eventually expire — when it does, the tool exits `1` and you re-grab it.
 
 ## Usage
 
@@ -93,9 +95,12 @@ warning to stderr when a window crosses that percent. Defaults: 90 / 85 / 95.
 
 ## Cron example
 
+With the cookie in `~/.config/opencode-go-usage/auth` (the default path), a
+cron job only needs the workspace id:
+
 ```cron
-# Refresh usage every 30 minutes (put OPENCODE_WORKSPACE_ID + the cookie in the environment)
-*/30 * * * * cd ~/opencode-go-usage && export $(grep -v '^#' .env | xargs) && ./opencode_go_usage.py --output usage.json
+# Refresh usage every 30 minutes
+*/30 * * * * OPENCODE_WORKSPACE_ID=wrk_... /path/to/opencode_go_usage.py --output ~/.cache/opencode-go-usage.json
 ```
 
 See [`examples/switch-provider-watchdog.py`](examples/switch-provider-watchdog.py)
