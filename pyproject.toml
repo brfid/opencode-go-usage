@@ -1,26 +1,28 @@
 [project]
-name = "opencode-go-usage"
-version = "1.0.0"
-description = "Fetch OpenCode Go usage limits as JSON — no browser, just your session cookie"
+name = "quotactl"
+version = "1.1.0"
+description = "Quota-aware LLM provider switch advisor — check rate limits across providers and get a simple instruction: stay or switch"
 readme = "README.md"
 requires-python = ">=3.9"
 license = "MIT"
 authors = [{ name = "brfid" }]
-keywords = ["opencode", "opencode-go", "usage", "cli", "rate-limit", "session-cookie", "coding-agent"]
+keywords = ["llm", "quota", "rate-limit", "provider", "switch", "opencode", "clinepass", "watchdog", "cli"]
 dependencies = []
 
 [project.scripts]
-opencode-go-usage = "opencode_go_usage:main"
+quotactl-go = "scraper_go:main"
+quotactl-cp = "scraper_cp:main"
+quotactl = "watchdog:main"
 
 [project.urls]
-Homepage = "https://github.com/brfid/opencode-go-usage"
+Homepage = "https://github.com/brfid/quotactl"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-only-include = ["opencode_go_usage.py"]
+packages = ["scraper_go.py", "scraper_cp.py", "watchdog.py", "_base.py"]
 
-[tool.hatch.build.targets.wheel.sources]
-"opencode_go_usage.py" = "opencode_go_usage.py"
+[tool.pytest.ini_options]
+testpaths = ["test_quotactl.py"]
